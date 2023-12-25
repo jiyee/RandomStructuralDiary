@@ -27,9 +27,9 @@ export default class RandomStructuralDiaryPlugin extends Plugin {
         await this.loadSettings();
 
         this.addCommand({
-            id: 'create-questions-list',
-            name: 'Create questions list',
-            
+            id: 'insert-random-questions',
+            name: 'Insert random questions',
+
             callback: async () => {
                 let file = this.app.vault.getAbstractFileByPath(`${this.settings.fileWithQuestions}`);
                 if (file instanceof TFile) {
@@ -50,7 +50,7 @@ export default class RandomStructuralDiaryPlugin extends Plugin {
     async loadSettings() {
         let oldSettings = await this.loadData();
         this.settings = Object.assign({}, DEFAULT_SETTINGS, oldSettings);
-    
+
         if(oldSettings && !oldSettings.hasOwnProperty("useAdvancedTemplate")){
             this.settings.useAdvancedTemplate = true;
         }
@@ -61,9 +61,19 @@ export default class RandomStructuralDiaryPlugin extends Plugin {
         await this.saveData(this.settings);
     }
 
-    private async fillFileWithQuestions(fileContent: string) {
+    async randomQuestions(): string {
+        let file = this.app.vault.getAbstractFileByPath(`${this.settings.fileWithQuestions}`);
+        if (file instanceof TFile) {
+            let fileContent = await this.app.vault.cachedRead(file);
+            return this.generateRandomQuestions(fileContent);
+        }
+
+        return "";
+    }
+
+    generateRandomQuestions(fileContent: string): string {
         let outputString = '';
-        
+
         if (this.settings.useAdvancedTemplate) {
             let sections = this.getSections(fileContent);
             let headers = sections.map(x => x[0]);
@@ -84,8 +94,6 @@ export default class RandomStructuralDiaryPlugin extends Plugin {
             }, []);
 
             outputString = flattenQuestions.join("\n\n\n");
-
-           
         } else {
             let sections = this.getSections(fileContent);
             let allQuestions = sections.reduce((acc, rec) => {
@@ -93,9 +101,9 @@ export default class RandomStructuralDiaryPlugin extends Plugin {
                 return acc.concat(rec);
             }, [])
             let numOfQuestions = this.settings.globalNumberOfQuestions;
-            
+
             let pickedQuestions = [];
-            
+
             for(let i = 0; i < numOfQuestions; i++){
                 let currentRandomNumber = this.getRandomInt(allQuestions.length)
                 let pickedQuestion = allQuestions[currentRandomNumber];
@@ -106,22 +114,28 @@ export default class RandomStructuralDiaryPlugin extends Plugin {
             outputString = pickedQuestions.join("\n\n\n");
         }
 
-            let activeFile = this.app.workspace.getActiveFile();
-            if (!activeFile || activeFile.extension !== MARKDOWN_EXTENSION) {
-                let fileName = `RandomDiaryQuestions by ${this.getFancyDate()}.${MARKDOWN_EXTENSION}`;
-                activeFile = await this.app.vault.create(fileName, outputString);
-            } else {
-                let view = this.app.workspace.getActiveViewOfType(MarkdownView);
-                view.editor.replaceRange(outputString, view.editor.getCursor())
-            }
+        return outputString;
+    }
 
-            let leaf = this.app.workspace.getMostRecentLeaf();
-            if (!leaf) {
-                let leaf = new WorkspaceLeaf();
-                this.app.workspace.createLeafBySplit(leaf);
-            }
+    private async fillFileWithQuestions(fileContent: string) {
+        const outputString = this.generateRandomQuestions(fileContent);
 
-            await leaf.openFile(activeFile);   
+        let activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile || activeFile.extension !== MARKDOWN_EXTENSION) {
+          let fileName = `RandomDiaryQuestions by ${this.getFancyDate()}.${MARKDOWN_EXTENSION}`;
+          activeFile = await this.app.vault.create(fileName, outputString);
+        } else {
+          let view = this.app.workspace.getActiveViewOfType(MarkdownView);
+          view.editor.replaceRange(outputString, view.editor.getCursor())
+        }
+
+        let leaf = this.app.workspace.getMostRecentLeaf();
+        if (!leaf) {
+          let leaf = new WorkspaceLeaf();
+          this.app.workspace.createLeafBySplit(leaf);
+        }
+
+        await leaf.openFile(activeFile);
     }
 
     /**
